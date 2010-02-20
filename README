@@ -1,1 +1,115 @@
 hammer - a tool for automatically flattening git merge histories by rebasing them with compensations
+
+(A hammer is, of course, a reasonably good tool for making things flat although it does tend to break things along the way)
+
+MANIFESTO
+
+The goal for this project is to build a tool that will linearize a git merge history by automatically rewriting a history of merges as a series of rebases.
+
+It is not a goal of this project to ensure that every commit in the rewritten history contains a consistent tree since that is a hard problem and typically requires manual resolution to resolve. The need for manual resolution conflicts with the goal of automation.
+
+In a sense, hammer trades consistency for completeness. Hammer will always successfully rewrite a merge history as a sequence of commits, but the sequence of commits may not always contain consistent trees. That said, the regions of inconsistency are limited to those strictly necessary to achieve automation and can always be subsequently removed with a manual rebase if required. 
+Furthermore, the rewritten history is guaranteed to contain consistent trees at least one point (the last one) and possibly many more.
+
+An important point to note that the manual effort required to achieve complete consistency can be indefinitely deferred if this is not required.
+
+MOTIVATING EXAMPLE
+
+Consider the following merge history.
+
+A-B-C-D-E-F-G-H
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+Suppose that conflicting edits at N and C resulted in a merge conflict that was resolved at Q and that the merge at T was clean.
+
+Now suppose one wanted to rebase the series ^H T onto H.
+
+One way to do this is to iteratively rebase bits of the history, while ensuring that the result at the head of each rebase is a tree that is identical to the tree at 
+the original merge.
+
+          M'-N'-P'
+         /
+A-B-C-D-E-F-G-H
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+invariant: tree(P') = tree(Q), consistent(x) => consistent(x')
+
+          M'-N'-P'-R'-S'
+         /
+A-B-C-D-E-F-G-H
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+invariant: tree(R') = tree(R), tree(S') = tree(S), consistent(x) => consistent(x')
+
+           M'-N'-P'-R'-S'
+          /    
+A-B-C-D-E-F-G-H-M''-N''-P''-R''-S''
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+invariant: tree(S'') = tree(T), consistent(x) => consistent(x')
+
+A problem arises because with all this rebasing going on, it is inevitable that eventually conflicting 
+edits in parallel branches of the history will conflict in a manner that causes a merge conflict. Normally 
+such a conflict would require manual resolution to resolve.
+
+Suppose, for example that conflicting edits were performed in C and N. In the original history, this would have caused a conflict that resolved at Q.
+
+During the rebasing of M-N-P onto E, the conflict would cause a failure while attempting to apply N to M'.
+
+SOLUTION OUTLINE
+
+Hammer solves this problem by beating the history at M' into a form that allows N to be applied to M'.
+
+In particular, it introduces a compenstation (here called e(^N)) that makes the tree after M' looke like the tree at N for the conflicted files. N then applies
+cleanly as does P to produce N' and P' respectively . In order to re-establish the rebasing invariant, a further compensation is introduced after P' to ensure that the resulting tree is restored to 
+match the tree at Q. This allows the subsequent rebasing activity involving R' and S' to occur without reference to the compensations introduced for N' and P'.
+
+
+          M'-e(^N)-N'-P'-e(Q^)-R'-S'
+         /
+A-B-C-D-E-F-G-H
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+invariant: tree(e(Q^)) = tree(Q)
+
+The rebasing continues and produces the final tree:
+
+           M'-N'-P'-R'-S'
+          /    
+A-B-C-D-E-F-G-H-M''-^e(^N)'-N'''-P'''-e(Q^)'-R''-S''
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+invariant: tree(S'') = tree(T), consistent( x ) for all x in { M'', R'', S'', e(Q^)' }
+
+The end result is a rebased history that produces the same tree as the original history, but contains inconsistencies along it's path. 
+In particular, the trees in N''' and P''' are not necessarily internally consistent because of the affects of the compensation 
+originally introduced at e(^N). On the otherhand, trees at M'', e(Q^)' and R'' and S'' match the trees that would have been produced had the original merges
+been performed as rebases with the same conflict resolution outcomes at Q and T. Furthermore, the diff between M'' and R'' will
+accurately reflect the intent of the original changes between M and R but without the confounding effects of history from E merged in at Q.
+
+Once the history is this form, one might choose to squash the compensations and intervening edits together into a single commit N+P+Q and thereby
+produce a completely consistent history again (with some loss of information).
+
+           M'-N'-P'-R'-S'
+          /    
+A-B-C-D-E-F-G-H-M''-N+P+Q-R''-S''
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+Alternatively, it might make sense to squash e(^N)'+N'''+e(Q^)' as N'''' and then replace P''' with the diff between N'''' and e(Q^)', resulting in
+a history that looks like.
+
+           M'-N'-P'-R'-S'
+          /    
+A-B-C-D-E-F-G-H-M''-N''''-P''''-R-''-S''
+ \       \     \
+  \-M-N-P-Q-R-S-T
+
+Presumably, this history could be edited to be identical history that would have been produced if the compensations had been performed manually
+during an interactive rebase in the first instance.
