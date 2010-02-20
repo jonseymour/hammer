@@ -152,23 +152,23 @@ during an interactive rebase in the first instance -in other words, making N''''
 Note: although it might be tempting to do so, squashing e(^N)' with N''' and P''' with e(Q^)' is almost certainly a mistake since although 
 the squashed commit P'''+e(Q^)' will contain a consistent tree (because e(Q^)') does, e(^N)'+N''' will be inconsistent but not obviously so.
 </p>
-<p>Interestingly if we call name the diff between P''' and e(Q^)' as Z and its reverse ~Z:
+<p>Suppose we name the diff between P''' and e(Q^)' as Z and its reverse ~Z
 <pre>
 	^e(^N)'-N'''-P'''-e(Q^)'
 </pre>
-and if Z successfully applies to N''', we could rewrite the history as:
+and if Z successfully applies to N''', then we could rewrite the history as:
 <pre>
 	^e(^N)'-N'''-apply(Z)-apply(~Z)-P'''-apply(Z)
 </pre>
 <p>
-Now, by definition apply(~Z)-P'''-apply(Z) is consistent (since it produces e(Q^)' and we are assuming e(Q^)' is persistent).
+Now, by definition apply(~Z)-P'''-apply(Z) is consistent (since it produces e(Q^)' and we are assuming e(Q^)' is consistent).
 </p>
 <p>
 I can't formally prove it, but presumably:
 <pre>
 	^e(^N)'-N'''-apply(Z)
 </pre>
-would also produce a consistent tree.
+would also produce a consistent tree on the basis that a patch that successfully restores consistency later in a series might successfully do so when applied earlier.
 <p>
 If so, squashing those as N'''' might be viable way to collapse the compensations and indeed suggests that it may even be possible to automatically eliminate all compensations from the rewritten history in cases where the apply(Z) cleanly applies to all the compensated commits - simply insert pairs of apply(Z), apply(Z~) after all compensated commits and squash the first compensation with the intervening edit and the next compensation repeatedly until all such triples are replaced with new versions of the compensated edits.
 </p>
