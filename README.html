@@ -40,7 +40,7 @@ Now suppose one wanted to rebase the series ^H T onto H.
 One way to do this is to iteratively rebase bits of the history, while ensuring that the result at the head of each rebase is a tree that is identical to the tree at 
 the original merge.
 </p>
-<p>For example, first we rebase A..P onto E editing P' to ensure that it matches the tree at Q exactly.
+<p>For example, first we rebase A..P onto E. If the merge at Q was clean then P' should contain the tree at Q.
 <pre>
           M'-N'-P'
          /
@@ -51,7 +51,8 @@ A-B-C-D-E-F-G-H
 invariant: tree(P') = tree(Q), consistent(x) => consistent(x')
 </pre>
 
-Then, we trivially rebase Q..S onto P'.
+Then, we rebase Q..S onto P'. Since this is a simple rebase of Q..S which is applying to exactly the same starting state (tree(P') == tree(Q)), 
+the rebase is guaranteed to be trivial.
 <pre>
           M'-N'-P'-R'-S'
          /
@@ -62,7 +63,7 @@ A-B-C-D-E-F-G-H
 invariant: tree(R') = tree(R), tree(S') = tree(S), consistent(x) => consistent(x')
 </pre>
 
-Finally, we rebase E..S' onto H to produce H..S'', ensuring that the tree at S'' matches the tree at T exactly.
+Finally, we rebase E..S' onto H to produce H..S''. Again, since the merge at T was clean the tree at S'' should be identical to the tree at T.
 <pre>
            M'-N'-P'-R'-S'
           /    
@@ -72,7 +73,9 @@ A-B-C-D-E-F-G-H-M''-N''-P''-R''-S''
 
 invariant: tree(S'') = tree(T), consistent(x) => consistent(x')
 </pre>
-
+<p>
+Notice that rebasing has dissolved the merges at Q and T, effectively eliminating them from the rebased history.
+</p>
 <p>
 A problem arises because with all this rebasing going on, it is inevitable that eventually conflicting 
 edits in parallel branches of the history will conflict in a manner that causes a merge conflict while rebasing. Normally 
@@ -144,4 +147,28 @@ A-B-C-D-E-F-G-H-M''-N''''-P''''-R-''-S''
 <p>
 Presumably, this history could be edited to be identical to the history that would have been produced if the compensations had been performed manually
 during an interactive rebase in the first instance -in other words, making N'''' identical to N'' and P'''' identical to P''.
+</p>
+<p>
+Note: although it might be tempting to do so, squashing e(^N)' with N''' and P''' with e(Q^)' is almost certainly a mistake since although 
+the squashed commit P'''+e(Q^)' will contain a consistent tree (because e(Q^)') does, e(^N)'+N''' will be inconsistent but not obviously so.
+</p>
+<p>Interestingly if we call name the diff between P''' and e(Q^)' as Z and its reverse ~Z:
+<pre>
+	^e(^N)'-N'''-P'''-e(Q^)'
+</pre>
+and if Z successfully applies to N''', we could rewrite the history as:
+<pre>
+	^e(^N)'-N'''-apply(Z)-apply(~Z)-P'''-apply(Z)
+</pre>
+<p>
+Now, by definition apply(~Z)-P'''-apply(Z) is consistent (since it produces e(Q^)' and we are assuming e(Q^)' is persistent).
+</p>
+<p>
+I can't formally prove it, but presumably:
+<pre>
+	^e(^N)'-N'''-apply(Z)
+</pre>
+would also produce a consistent tree.
+<p>
+If so, squashing those as N'''' might be viable way to collapse the compensations and indeed suggests that it may even be possible to automatically eliminate all compensations from the rewritten history in cases where the apply(Z) cleanly applies to all the compensated commits - simply insert pairs of apply(Z), apply(Z~) after all compensated commits and squash the first compensation with the intervening edit and the next compensation repeatedly until all such triples are replaced with new versions of the compensated edits.
 </p>
