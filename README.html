@@ -15,8 +15,7 @@ The goal for this project is to build a tool that will linearize a git merge his
 It is not a goal of this project to ensure that every commit in the rewritten history contains a consistent tree since that is a hard problem and typically requires manual resolution to resolve. The need for manual resolution conflicts with the goal of automation.
 </p>
 <p>
-In a sense, hammer trades consistency for completeness. Hammer will always successfully rewrite a merge history as a sequence of commits, but the sequence of commits may not always contain consistent trees. That said, the regions of inconsistency are limited to those strictly necessary to achieve automation and can always be subsequently removed with a manual rebase if required. 
-Furthermore, the rewritten history is guaranteed to contain consistent trees at least one point (the last one) and possibly many more.
+In a sense, hammer trades consistency for completeness. Hammer will always successfully rewrite a merge history as a sequence of commits, but the sequence of commits may not always contain consistent trees. That said, the regions of inconsistency are limited to those strictly necessary to achieve automation and can always be subsequently removed with a manual rebase if required. Furthermore, the rewritten history is guaranteed to contain consistent trees at least one point (the last one) and possibly many more.
 </p>
 <p>
 An important point to note that the manual effort required to achieve complete consistency can be indefinitely deferred if this is not required.
@@ -33,14 +32,16 @@ A-B-C-D-E-F-G-H
  \       \     \
   \-M-N-P-Q-R-S-T
 </pre>
-Suppose that conflicting edits at N and C resulted in a merge conflict that was resolved at Q and that the merge at T was clean.
-
+<p>
+and suppose that conflicting edits at N and C resulted in a merge conflict that was resolved at Q and that the merge at T was clean.
+</p>
 Now suppose one wanted to rebase the series ^H T onto H.
-
+<p>
 One way to do this is to iteratively rebase bits of the history, while ensuring that the result at the head of each rebase is a tree that is identical to the tree at 
 the original merge.
+</p>
+<p>For example, first we rebase A..P onto E editing P' to ensure that it matches the tree at Q exactly.
 <pre>
-
           M'-N'-P'
          /
 A-B-C-D-E-F-G-H
@@ -50,7 +51,7 @@ A-B-C-D-E-F-G-H
 invariant: tree(P') = tree(Q), consistent(x) => consistent(x')
 </pre>
 
-
+Then, we trivially rebase Q..S onto P'.
 <pre>
           M'-N'-P'-R'-S'
          /
@@ -61,7 +62,7 @@ A-B-C-D-E-F-G-H
 invariant: tree(R') = tree(R), tree(S') = tree(S), consistent(x) => consistent(x')
 </pre>
 
-
+Finally, we rebase E..S' onto H to produce H..S'', ensuring that the tree at S'' matches the tree at T exactly.
 <pre>
            M'-N'-P'-R'-S'
           /    
@@ -72,21 +73,21 @@ A-B-C-D-E-F-G-H-M''-N''-P''-R''-S''
 invariant: tree(S'') = tree(T), consistent(x) => consistent(x')
 </pre>
 
-
+<p>
 A problem arises because with all this rebasing going on, it is inevitable that eventually conflicting 
-edits in parallel branches of the history will conflict in a manner that causes a merge conflict. Normally 
+edits in parallel branches of the history will conflict in a manner that causes a merge conflict while rebasing. Normally 
 such a conflict would require manual resolution to resolve.
-
-Suppose, for example that conflicting edits were performed in C and N. In the original history, this would have caused a conflict that resolved at Q.
+<p>
+Suppose, for example that conflicting edits were performed in C and N. In the original history, this would have caused a conflict that was resolved at Q.
+</p>
 
 During the rebasing of M-N-P onto E, the conflict would cause a failure while attempting to apply N to M'.
 
 <h2>Solution outline</h2>
 
-Hammer solves this problem by beating the history at M' into a form that allows N to be applied to M'.
+Hammer solves this problem by beating the history after M' into a form that allows N to be trivially applied to M'.
 
-In particular, it introduces a compenstation (here called e(^N)) that makes the tree after M' looke like the tree at N for the conflicted files. N then applies
-cleanly as does P to produce N' and P' respectively . In order to re-establish the rebasing invariant, a further compensation is introduced after P' to ensure that the resulting tree is restored to 
+In particular, it introduces a compenstation (here called e(^N)) that makes the tree after M' look like the tree at N for the conflicted files (and only the conflicted files). N then applies cleanly as does P to produce N' and P' respectively. In order to re-establish the rebasing invariant, a further compensation is introduced after P' to ensure that the resulting tree is restored to 
 match the tree at Q. This allows the subsequent rebasing activity involving R' and S' to occur without reference to the compensations introduced for N' and P'.
 
 
@@ -111,29 +112,28 @@ A-B-C-D-E-F-G-H-M''-^e(^N)'-N'''-P'''-e(Q^)'-R''-S''
 
 invariant: tree(S'') = tree(T), consistent( x ) for all x in { M'', R'', S'', e(Q^)' }
 </pre>
-
-
+<p>
 The end result is a rebased history that produces the same tree as the original history, but contains inconsistencies along its path. 
-In particular, the trees in N''' and P''' are not necessarily internally consistent because of the affects of the compensation 
+In particular, the trees in N''' and P''' are not necessarily internally consistent because of the effects of the compensation 
 originally introduced at e(^N). On the otherhand, trees at M'', e(Q^)' and R'' and S'' match the trees that would have been produced had the original merges
 been performed as rebases with the same conflict resolution outcomes at Q and T. Furthermore, the diff between M'' and R'' will
 accurately reflect the intent of the original changes between M and R but without the confounding effects of history from E merged in at Q.
-
+</p>
+<p>
 Once the history is this form, one might choose to squash the compensations and intervening edits together into a single commit N+P+Q and thereby
 produce a completely consistent history again (with some loss of information).
-
+<p>
 <pre>
            M'-N'-P'-R'-S'
           /    
 A-B-C-D-E-F-G-H-M''-N+P+Q-R''-S''
  \       \     \
   \-M-N-P-Q-R-S-T
-
 </pre>
-
+<p>
 Alternatively, it might make sense to squash e(^N)'+N'''+e(Q^)' as N'''' and then replace P''' with the diff between N'''' and e(Q^)', resulting in
 a history that looks like.
-
+</p>
 <pre>
            M'-N'-P'-R'-S'
           /    
@@ -141,6 +141,7 @@ A-B-C-D-E-F-G-H-M''-N''''-P''''-R-''-S''
  \       \     \
   \-M-N-P-Q-R-S-T
 </pre>
-
-Presumably, this history could be edited to be identical history that would have been produced if the compensations had been performed manually
-during an interactive rebase in the first instance.
+<p>
+Presumably, this history could be edited to be identical to the history that would have been produced if the compensations had been performed manually
+during an interactive rebase in the first instance -in other words, making N'''' identical to N'' and P'''' identical to P''.
+</p>
